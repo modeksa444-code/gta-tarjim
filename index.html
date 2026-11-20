@@ -28,6 +28,11 @@ h1{font:400 30px/1.1 Lalezar,Tajawal,sans-serif;margin:4px 0;background:linear-g
 .tr-card{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
 #out{font-size:22px;line-height:1.8;white-space:pre-wrap;min-height:1.8em;font-weight:500}
 #out.wait{color:var(--mute);font-size:16px;font-weight:400}
+#feed{display:grid;gap:10px}
+.ln{font-size:22px;line-height:1.7;font-weight:500;white-space:pre-wrap;transition:opacity .3s}
+.ln.old{opacity:.5;font-size:17px}
+.ln.pend{color:var(--mute)}
+.ln small{display:block;direction:ltr;text-align:left;color:var(--mute);font-size:13px;font-weight:400}
 #en{direction:ltr;text-align:left;color:var(--mute);font-size:14px;margin-top:6px;white-space:pre-wrap}
 .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 button,select,input{font:700 16px Tajawal,sans-serif;min-height:48px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 14px}
@@ -74,8 +79,8 @@ body.focus .wrap>*:not(.stage):not(.tr-card):not(.row){display:none}
   </div>
 
   <div class="tr-card">
+    <div id="feed"></div>
     <div id="out" class="wait">الترجمة تطلع هنا.</div>
-    <div id="en"></div>
   </div>
 
   <div class="row">
@@ -123,15 +128,14 @@ body.focus .wrap>*:not(.stage):not(.tr-card):not(.row){display:none}
 {
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-const stage=$('stage'),out=$('out'),en=$('en'),statusEl=$('status');
+const stage=$('stage'),out=$('out'),feedEl=$('feed'),statusEl=$('status');
 const PRICE={'claude-haiku-5-5':[0.10,0.50],'claude-sonnet-5-5':[2,10]};
 let key=store.get('gta-key',''),box=store.get('gta-box',{x:.06,y:.68,w:.88,h:.24});
 let hist=store.get('gta-hist',[]),spent=store.get('gta-spent',0);
-let video=null,stream=null,running=false,busy=false,lastSentSig=null,prevSig=null,lastSentAt=0,lastEN='',ctx=[],wake=null,loopT=null,ctrl=null;
+let video=null,stream=null,running=false,busy=false,jobs=0,seq=0,feed=[],recentEN=[],lastSentSig=null,prevSig=null,lastSentAt=0,lastEN='',ctx=[],wake=null,loopT=null,ctrl=null;
 
 for(const k of ['model','style','sens']){const v=store.get('gta-'+k,null);if(v)$(k).value=v;$(k).onchange=()=>store.set('gta-'+k,$(k).value)}
-for(const k of ['notes','showEn']){$(k).checked=store.get('gta-'+k,$(k).checked);$(k).onchange=()=>{store.set('gta-'+k,$(k).checked);en.hidden=!$('showEn').checked}}
-en.hidden=!$('showEn').checked;
+for(const k of ['notes','showEn']){$(k).checked=store.get('gta-'+k,$(k).checked);$(k).onchange=()=>{store.set('gta-'+k,$(k).checked);renderFeed()}}
 
 function showKey(){$('keybox').hidden=false;$('keyIn').value='';$('keyIn').focus()}
 $('keySave').onclick=()=>{const v=$('keyIn').value.trim();if(!v.startsWith('sk-')){$('keyErr').textContent='المفتاح لازم يبدأ بـ sk-ant-';return}
@@ -202,13 +206,11 @@ function tick(){
   const changed=!lastSentSig||diff(cur,lastSentSig)>th;
   const hasText=cur.std>9;
   prevSig=cur;
-  if(busy)statusEl.textContent='يترجم…';
+  if(jobs)statusEl.textContent=jobs>1?`يترجم ${jobs} جمل…`:'يترجم…';
   else if(!hasText)statusEl.textContent='ما فيه نص';
   else if(changed&&!stable)statusEl.textContent='ينتظر النص يثبت…';
   else if(!/أول كلمة/.test(statusEl.textContent))statusEl.textContent='يراقب';
-  if(hasText&&changed&&stable&&Date.now()-lastSentAt>300){
-    if(busy){ctrl?.abort();busy=false}   // a newer line appeared: drop the old request, chase the new one
-    lastSentSig=cur;translate()}
+  if(hasText&&changed&&stable&&Date.now()-lastSentAt>300&&jobs<3){lastSentSig=cur;translate()}
 }
 
 /* ---------- translation ---------- */
@@ -228,14 +230,22 @@ Reply ONLY: <ar>Arabic</ar><en>English read</en>  — or <ar></ar><en></en> if n
 }
 function between(s,a,b){const i=s.indexOf(a);if(i<0)return null;const j=s.indexOf(b,i+a.length);return s.slice(i+a.length,j<0?undefined:j).trim()}
 
+const esc=t=>t.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const norm=t=>t.toLowerCase().replace(/[^a-z0-9]/g,'');
+function renderFeed(){
+  const show=feed.slice(-4),showEn=$('showEn').checked;
+  feedEl.innerHTML=show.map((f,i)=>`<div class="ln${i<show.length-1?' old':''}${f.ar?'':' pend'}">${f.ar?esc(f.ar):'…'}${showEn&&f.en?`<small>${esc(f.en)}</small>`:''}</div>`).join('');
+  out.hidden=!!feed.length;
+}
 async function translate(){
   if(!key){showKey();return}
   if(!video)return;
-  busy=true;lastSentAt=Date.now();boxEl.classList.add('busy');
-  const model=$('model').value,img=cropJpeg();
-  ctrl=new AbortController();let full='',inTok=0,outTok=0,first=0;const t0=performance.now();
+  jobs++;lastSentAt=Date.now();boxEl.classList.add('busy');
+  const model=$('model').value,img=cropJpeg(),item={id:++seq,ar:'',en:''};
+  feed.push(item);feed=feed.slice(-8);renderFeed();
+  let full='',inTok=0,outTok=0,first=0;const t0=performance.now();
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body:JSON.stringify({model,max_tokens:300,stream:true,messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}},{type:'text',text:prompt()}]}]})});
@@ -250,17 +260,16 @@ async function translate(){
         else if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){full+=ev.delta.text;
           const ar=between(full,'<ar>','</ar>');
           if(ar&&!first){first=performance.now()-t0;statusEl.textContent=`أول كلمة: ${(first/1000).toFixed(1)} ث`}
-          if(ar){out.className='';out.textContent=ar;en.textContent=between(full,'<en>','</en>')||''}}}}
+          if(ar){item.ar=ar;renderFeed()}}}}
     const p=PRICE[model];spent+=(inTok*p[0]+outTok*p[1])/1e6;store.set('gta-spent',spent);drawCost();
-    const ar=between(full,'<ar>','</ar>')||'',e=between(full,'<en>','</en>')||'';
-    if(!e||!ar){statusEl.textContent='ما فيه نص'}
-    else if(e.toLowerCase()!==lastEN.toLowerCase()){
-      lastEN=e;out.className='';out.textContent=ar;en.textContent=e;
+    const ar=between(full,'<ar>','</ar>')||'',e=between(full,'<en>','</en>')||'',k=norm(e);
+    if(!ar||!k||recentEN.includes(k)){feed=feed.filter(f=>f!==item)}       // empty or same line again
+    else{item.ar=ar;item.en=e;recentEN.push(k);recentEN=recentEN.slice(-8);
       ctx.push(e.slice(0,160));ctx=ctx.slice(-3);
-      hist.unshift({t:Date.now(),s:ar});hist=hist.slice(0,30);store.set('gta-hist',hist);drawHist();
-    }
-  }catch(err){if(err.name!=='AbortError'){out.className='wait err';out.textContent=err.message||'صار خطأ في الاتصال.';if(/المفتاح|الرصيد/.test(err.message))stop()}}
-  finally{busy=false;boxEl.classList.remove('busy')}
+      hist.unshift({t:Date.now(),s:ar});hist=hist.slice(0,40);store.set('gta-hist',hist);drawHist()}
+    renderFeed();
+  }catch(err){feed=feed.filter(f=>f!==item);renderFeed();out.hidden=false;out.className='wait err';out.textContent=err.message||'صار خطأ في الاتصال.';if(/المفتاح|الرصيد/.test(err.message))stop()}
+  finally{jobs--;if(!jobs)boxEl.classList.remove('busy')}
 }
 
 /* ---------- controls ---------- */
@@ -272,7 +281,7 @@ async function start(){
 }
 function stop(){running=false;clearInterval(loopT);$('run').textContent='شغّل الترجمة الحية';$('run').classList.remove('on');statusEl.textContent='متوقف';try{wake?.release()}catch(e){}}
 $('run').onclick=()=>running?stop():start();
-$('now').onclick=async()=>{if(!video&&!(await startCam()))return;if(!busy){lastEN='';translate()}};
+$('now').onclick=async()=>{if(!video&&!(await startCam()))return;recentEN=[];translate()};
 $('focusBtn').onclick=()=>{document.body.classList.toggle('focus');$('focusBtn').textContent=document.body.classList.contains('focus')?'إظهار الإعدادات':'وضع اللعب'};
 
 function drawHist(){$('hist').innerHTML=hist.map(h=>`<li><time>${new Date(h.t).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit'})}</time>${h.s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</li>`).join('')||'<li class="small">ما فيه شي للحين.</li>'}
