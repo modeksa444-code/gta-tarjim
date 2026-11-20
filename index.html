@@ -237,7 +237,7 @@ async function translate(){
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model,max_tokens:300,temperature:0.3,stream:true,messages:[{role:'user',content:[
+      body:JSON.stringify({model,max_tokens:300,stream:true,messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}},{type:'text',text:prompt()}]}]})});
     if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message}catch(e){}
       throw new Error(r.status===401?'المفتاح غلط — غيّره من «آخر الترجمات».':r.status===429?'كثرت الطلبات، بيرجع يشتغل بعد شوي.':(r.status===400&&/credit/i.test(m))?'الرصيد خلص — اشحن من console.anthropic.com':m)}
