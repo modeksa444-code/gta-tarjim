@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#120b24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>مترجم قراند الحي</title>
+<link href="https://fonts.googleapis.com/css2?family=Lalezar&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#120b24;--panel:#1d1336;--ink:#f7eefc;--mute:#b9a7cc;--line:#33245a;--pink:#ff2d87;--orange:#ff8a1f;--teal:#16d6c4}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.7 Tajawal,system-ui,sans-serif;overflow-x:clip}
+body{background-image:radial-gradient(120% 50% at 50% -10%,#3a1450 0,transparent 60%);min-height:100vh}
+.wrap{max-width:900px;margin:0 auto;padding:12px max(3vw,10px) 50px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+h1{font:400 30px/1.1 Lalezar,Tajawal,sans-serif;margin:4px 0;background:linear-gradient(90deg,var(--orange),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.cost{font-size:13px;color:var(--mute);text-align:left;direction:ltr}
+.stage{position:relative;border-radius:16px;overflow:hidden;background:#05030c;border:1px solid var(--line);touch-action:none;user-select:none;-webkit-user-select:none;min-height:200px;display:grid;place-items:center}
+.stage video{display:block;width:100%;height:auto}
+.empty{color:#cbb9e0;text-align:center;padding:40px 20px}
+.empty b{display:block;font:400 24px Lalezar,sans-serif;color:#fff}
+#box{position:absolute;border:2.5px solid var(--pink);border-radius:10px;box-shadow:0 0 0 9999px rgba(5,3,12,.5),0 0 16px var(--pink);cursor:move;transition:border-color .2s}
+#box.busy{border-color:var(--teal);box-shadow:0 0 0 9999px rgba(5,3,12,.5),0 0 18px var(--teal)}
+.h{position:absolute;width:32px;height:32px;background:var(--orange);border:3px solid #fff;border-radius:50%}
+.h.bl{left:-16px;bottom:-16px}.h.tr{right:-16px;top:-16px}
+#status{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:13px;padding:2px 10px;border-radius:10px;pointer-events:none}
+.tr-card{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+#out{font-size:22px;line-height:1.8;white-space:pre-wrap;min-height:1.8em;font-weight:500}
+#out.wait{color:var(--mute);font-size:16px;font-weight:400}
+#en{direction:ltr;text-align:left;color:var(--mute);font-size:14px;margin-top:6px;white-space:pre-wrap}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button,select,input{font:700 16px Tajawal,sans-serif;min-height:48px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 14px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.main{flex:1 1 100%;min-height:60px;font-size:20px;border:0;color:#fff;background:linear-gradient(90deg,var(--orange),var(--pink))}
+.main.on{background:var(--teal);color:#05221f}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.grid label{font-size:13px;color:var(--mute);display:grid;gap:4px}
+input[type=range]{min-height:36px;padding:0;accent-color:var(--pink)}
+.chk{display:flex!important;align-items:center;gap:8px;font-size:15px!important;color:var(--ink)!important}
+.chk input{width:22px;height:22px;min-height:0;accent-color:var(--pink)}
+details{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px 16px}
+summary{cursor:pointer;font-weight:800;min-height:36px;display:flex;align-items:center}
+.hist{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:8px}
+.hist li{border-top:1px solid var(--line);padding-top:8px;white-space:pre-wrap;font-size:16px}
+.hist time{display:block;font-size:12px;color:var(--mute)}
+.keybox{max-width:520px;margin:30px auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px}
+.keybox input{width:100%;direction:ltr;margin:10px 0}
+.keybox p{color:var(--mute);font-size:15px;margin:6px 0}
+.err{color:var(--pink)!important}
+.small{font-size:13px;color:var(--mute)}
+body.focus .wrap>*:not(.stage):not(.tr-card):not(.row){display:none}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <h1>مترجم قراند الحي</h1>
+    <div class="cost" id="cost"></div>
+  </header>
+
+  <section class="keybox" id="keybox" hidden>
+    <b>الصق مفتاح API</b>
+    <p>من console.anthropic.com ← API Keys. يتحفظ على جوالك بس، والطلبات تروح من جوالك مباشرة لـ Anthropic.</p>
+    <input id="keyIn" type="password" placeholder="sk-ant-..." autocomplete="off">
+    <button class="main" id="keySave">حفظ وابدأ</button>
+    <p class="err" id="keyErr"></p>
+  </section>
+
+  <div class="stage" id="stage">
+    <div class="empty" id="empty"><b>وجّه الجوال على الشاشة</b>اضغط «شغّل» تحت</div>
+    <span id="status" hidden></span>
+  </div>
+
+  <div class="tr-card">
+    <div id="out" class="wait">الترجمة تطلع هنا.</div>
+    <div id="en"></div>
+  </div>
+
+  <div class="row">
+    <button class="main" id="run">شغّل الترجمة الحية</button>
+    <button id="now">ترجم الحين</button>
+    <button id="focusBtn">وضع اللعب</button>
+  </div>
+
+  <div class="grid">
+    <label>الموديل
+      <select id="model">
+        <option value="claude-haiku-5-5">Haiku 5.5 — الأرخص</option>
+        <option value="claude-sonnet-5-5">Sonnet 5.5 — الأقوى</option>
+      </select>
+    </label>
+    <label>الأسلوب
+      <select id="style">
+        <option value="gulf">عامية سعودية</option>
+        <option value="fusha">فصحى سينمائية</option>
+      </select>
+    </label>
+    <label>الحساسية للتغيير
+      <select id="sens">
+        <option value="14">عادية</option>
+        <option value="8">عالية</option>
+        <option value="22">منخفضة (أوفر)</option>
+      </select>
+    </label>
+    <label id="zoomWrap" hidden>تقريب الكاميرا
+      <input type="range" id="zoom" min="1" max="5" step="0.1" value="1">
+    </label>
+    <label class="chk"><input type="checkbox" id="notes"> اشرح العامية</label>
+    <label class="chk"><input type="checkbox" id="showEn" checked> اعرض النص الإنجليزي</label>
+  </div>
+
+  <details id="histBox">
+    <summary>آخر الترجمات</summary>
+    <ul class="hist" id="hist"></ul>
+    <div class="row"><button id="clear">مسح السجل</button><button id="resetKey">تغيير المفتاح</button></div>
+  </details>
+  <p class="small">الأداة ترسل بس لما يتغير النص في المربع ويثبت. التكلفة تقديرية.</p>
+</div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const stage=$('stage'),out=$('out'),en=$('en'),statusEl=$('status');
+const PRICE={'claude-haiku-5-5':[0.10,0.50],'claude-sonnet-5-5':[2,10]};
+let key=store.get('gta-key',''),box=store.get('gta-box',{x:.06,y:.68,w:.88,h:.24});
+let hist=store.get('gta-hist',[]),spent=store.get('gta-spent',0);
+let video=null,stream=null,running=false,busy=false,lastSentSig=null,prevSig=null,lastSentAt=0,lastEN='',ctx=[],wake=null,loopT=null,ctrl=null;
+
+for(const k of ['model','style','sens']){const v=store.get('gta-'+k,null);if(v)$(k).value=v;$(k).onchange=()=>store.set('gta-'+k,$(k).value)}
+for(const k of ['notes','showEn']){$(k).checked=store.get('gta-'+k,$(k).checked);$(k).onchange=()=>{store.set('gta-'+k,$(k).checked);en.hidden=!$('showEn').checked}}
+en.hidden=!$('showEn').checked;
+
+function showKey(){$('keybox').hidden=false;$('keyIn').value='';$('keyIn').focus()}
+$('keySave').onclick=()=>{const v=$('keyIn').value.trim();if(!v.startsWith('sk-')){$('keyErr').textContent='المفتاح لازم يبدأ بـ sk-ant-';return}
+  key=v;store.set('gta-key',key);$('keybox').hidden=true;$('keyErr').textContent=''};
+$('resetKey').onclick=showKey;
+if(!key)showKey();
+
+function drawCost(){$('cost').textContent=`$${spent.toFixed(3)} ≈ ${(spent*3.75).toFixed(2)} ر.س`}
+drawCost();
+
+/* ---------- box ---------- */
+const boxEl=document.createElement('div');boxEl.id='box';boxEl.innerHTML='<span class="h bl" data-h="bl"></span><span class="h tr" data-h="tr"></span>';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function place(){Object.assign(boxEl.style,{left:box.x*100+'%',top:box.y*100+'%',width:box.w*100+'%',height:box.h*100+'%'})}
+let drag=null;
+stage.addEventListener('pointerdown',e=>{
+  if(!video)return;
+  const r=stage.getBoundingClientRect(),px=(e.clientX-r.left)/r.width,py=(e.clientY-r.top)/r.height,h=e.target.dataset.h;
+  if(h)drag={mode:h,b:{...box},px,py};else if(e.target===boxEl)drag={mode:'move',b:{...box},px,py};
+  else{drag={mode:'draw',ox:px,oy:py};box={x:px,y:py,w:.02,h:.02};place()}
+  stage.setPointerCapture(e.pointerId);e.preventDefault();
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag)return;const r=stage.getBoundingClientRect(),px=clamp((e.clientX-r.left)/r.width,0,1),py=clamp((e.clientY-r.top)/r.height,0,1);
+  const d=drag,dx=px-(d.px||0),dy=py-(d.py||0),m=.06;
+  if(d.mode==='move'){box.x=clamp(d.b.x+dx,0,1-d.b.w);box.y=clamp(d.b.y+dy,0,1-d.b.h)}
+  else if(d.mode==='bl'){const nx=clamp(d.b.x+dx,0,d.b.x+d.b.w-m);box.w=d.b.x+d.b.w-nx;box.x=nx;box.h=clamp(d.b.h+dy,m,1-d.b.y)}
+  else if(d.mode==='tr'){const ny=clamp(d.b.y+dy,0,d.b.y+d.b.h-m);box.h=d.b.y+d.b.h-ny;box.y=ny;box.w=clamp(d.b.w+dx,m,1-d.b.x)}
+  else box={x:Math.min(d.ox,px),y:Math.min(d.oy,py),w:Math.max(Math.abs(px-d.ox),.02),h:Math.max(Math.abs(py-d.oy),.02)};
+  place();
+});
+const endDrag=()=>{if(!drag)return;drag=null;if(box.w<.06||box.h<.04){box.w=Math.max(box.w,.3);box.h=Math.max(box.h,.1);box.x=clamp(box.x,0,1-box.w);box.y=clamp(box.y,0,1-box.h);place()}
+  store.set('gta-box',box);lastSentSig=null};
+stage.addEventListener('pointerup',endDrag);stage.addEventListener('pointercancel',endDrag);
+
+/* ---------- camera ---------- */
+async function startCam(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+  }catch(e){out.className='wait err';out.textContent='ما قدرت أفتح الكاميرا. تأكد إنك فاتح الرابط من Safari أو Chrome وسامح بالكاميرا من الإعدادات.';return false}
+  video=document.createElement('video');video.playsInline=true;video.muted=true;video.setAttribute('playsinline','');video.srcObject=stream;
+  await video.play().catch(()=>{});
+  $('empty')?.remove();stage.prepend(video);stage.appendChild(boxEl);place();statusEl.hidden=false;
+  const tr=stream.getVideoTracks()[0],caps=tr.getCapabilities?.()||{};
+  if(caps.zoom){const z=$('zoom');z.min=caps.zoom.min;z.max=Math.min(caps.zoom.max,8);z.step=caps.zoom.step||.1;z.value=store.get('gta-zoom',caps.zoom.min);
+    $('zoomWrap').hidden=false;const ap=()=>tr.applyConstraints({advanced:[{zoom:+z.value}]}).catch(()=>{});ap();z.oninput=()=>{store.set('gta-zoom',+z.value);ap()}}
+  return true;
+}
+async function keepAwake(){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&running)keepAwake()});
+
+/* ---------- change detection ---------- */
+const sigC=document.createElement('canvas');sigC.width=96;sigC.height=32;const sg=sigC.getContext('2d',{willReadFrequently:true});
+function region(){const W=video.videoWidth,H=video.videoHeight;return[box.x*W,box.y*H,box.w*W,box.h*H]}
+function signature(){
+  const [sx,sy,sw,sh]=region();sg.drawImage(video,sx,sy,sw,sh,0,0,96,32);
+  const d=sg.getImageData(0,0,96,32).data,g=new Float32Array(96*32);let mean=0;
+  for(let i=0;i<g.length;i++){g[i]=d[i*4]*.3+d[i*4+1]*.59+d[i*4+2]*.11;mean+=g[i]}
+  mean/=g.length;let v=0;for(let i=0;i<g.length;i++){g[i]-=mean;v+=g[i]*g[i]}   // remove brightness shifts
+  return{g,std:Math.sqrt(v/g.length)};
+}
+const diff=(a,b)=>{let s=0;for(let i=0;i<a.g.length;i++)s+=Math.abs(a.g[i]-b.g[i]);return s/a.g.length};
+
+function tick(){
+  if(!running||!video||!video.videoWidth){return}
+  const cur=signature(),th=+$('sens').value;
+  const stable=prevSig&&diff(cur,prevSig)<th*.5;
+  const changed=!lastSentSig||diff(cur,lastSentSig)>th;
+  const hasText=cur.std>9;
+  prevSig=cur;
+  if(busy)statusEl.textContent='يترجم…';
+  else if(!hasText)statusEl.textContent='ما فيه نص';
+  else if(changed&&!stable)statusEl.textContent='ينتظر النص يثبت…';
+  else statusEl.textContent='يراقب';
+  if(!busy&&hasText&&changed&&stable&&Date.now()-lastSentAt>1200){lastSentSig=cur;translate()}
+}
+
+/* ---------- translation ---------- */
+function cropJpeg(){
+  const [sx,sy,sw,sh]=region(),s=Math.min(1280/Math.max(sw,sh),2);
+  const c=document.createElement('canvas');c.width=Math.round(sw*s);c.height=Math.round(sh*s);
+  const g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',.85).split(',')[1];
+}
+const STYLE={gulf:'Natural Saudi colloquial Arabic (عامية سعودية) — how a witty Saudi gamer would say it to a friend. Punchy, never cringe.',
+ fusha:'Polished cinematic Modern Standard Arabic like a top-tier official Arabic dub: vivid, elegant, never stiff or literal.'};
+function prompt(){
+  return `You are an elite Arabic game localizer translating Grand Theft Auto VI (Leonida / Vice City; protagonists Lucia and Jason) live for an Arab player.
+The image is a phone-camera crop of a TV showing game text (subtitles, mission objectives, phone messages, menus). It may be blurry, angled, with glare or scanlines — read carefully, using game context to fix unclear letters.
+${ctx.length?`Recent lines for context (do not re-translate them): ${ctx.join(' | ')}`:''}
+
+Translate ALL readable English text into Arabic.
+Style: ${STYLE[$('style').value]}
+Rules: translate meaning, tone and attitude, never word-for-word; sarcasm stays sarcastic, threats menacing, jokes must land. Slang/idioms → natural Arabic equivalents. Strong swearing → strong but non-vulgar Arabic. Names/places/brands in common Arabic transliteration (لوسيا، جيسون، فايس سيتي). Dialogue with speaker names: «الاسم: الجملة», one per line. Mission objectives: short imperative. Ignore stray HUD numbers. Unreadable word → […].
+${$('notes').checked?'After the Arabic, add a line "—" then up to 2 very short Arabic notes on slang/references, only if any.':''}
+Output format exactly:
+<en>the English text you read</en>
+<ar>the Arabic translation</ar>
+If there is no readable English text output exactly: <en></en><ar></ar>`;
+}
+function between(s,a,b){const i=s.indexOf(a);if(i<0)return null;const j=s.indexOf(b,i+a.length);return s.slice(i+a.length,j<0?undefined:j).trim()}
+
+async function translate(){
+  if(!key){showKey();return}
+  if(!video)return;
+  busy=true;lastSentAt=Date.now();boxEl.classList.add('busy');
+  const model=$('model').value,img=cropJpeg();
+  ctrl=new AbortController();let full='',inTok=0,outTok=0;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model,max_tokens:700,stream:true,messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}},{type:'text',text:prompt()}]}]})});
+    if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message}catch(e){}
+      throw new Error(r.status===401?'المفتاح غلط — غيّره من «آخر الترجمات».':r.status===429?'كثرت الطلبات، بيرجع يشتغل بعد شوي.':(r.status===400&&/credit/i.test(m))?'الرصيد خلص — اشحن من console.anthropic.com':m)}
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+      let i;while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line.startsWith('data:'))continue;
+        let ev;try{ev=JSON.parse(line.slice(5))}catch(e){continue}
+        if(ev.type==='message_start')inTok=ev.message?.usage?.input_tokens||0;
+        else if(ev.type==='message_delta')outTok=ev.usage?.output_tokens||outTok;
+        else if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){full+=ev.delta.text;
+          const ar=between(full,'<ar>','</ar>'),e=between(full,'<en>','</en>');
+          if(e!=null&&e.toLowerCase()===lastEN.toLowerCase()&&e){} // same line, keep current display
+          else if(ar){out.className='';out.textContent=ar;en.textContent=e||''}}}}
+    const p=PRICE[model];spent+=(inTok*p[0]+outTok*p[1])/1e6;store.set('gta-spent',spent);drawCost();
+    const ar=between(full,'<ar>','</ar>')||'',e=between(full,'<en>','</en>')||'';
+    if(!e||!ar){statusEl.textContent='ما فيه نص'}
+    else if(e.toLowerCase()!==lastEN.toLowerCase()){
+      lastEN=e;out.className='';out.textContent=ar;en.textContent=e;
+      ctx.push(e.slice(0,160));ctx=ctx.slice(-3);
+      hist.unshift({t:Date.now(),s:ar});hist=hist.slice(0,30);store.set('gta-hist',hist);drawHist();
+    }
+  }catch(err){if(err.name!=='AbortError'){out.className='wait err';out.textContent=err.message||'صار خطأ في الاتصال.';if(/المفتاح|الرصيد/.test(err.message))stop()}}
+  finally{busy=false;boxEl.classList.remove('busy')}
+}
+
+/* ---------- controls ---------- */
+async function start(){
+  if(!key){showKey();return}
+  if(!video&&!(await startCam()))return;
+  running=true;keepAwake();$('run').textContent='إيقاف';$('run').classList.add('on');
+  clearInterval(loopT);loopT=setInterval(tick,450);
+}
+function stop(){running=false;clearInterval(loopT);$('run').textContent='شغّل الترجمة الحية';$('run').classList.remove('on');statusEl.textContent='متوقف';try{wake?.release()}catch(e){}}
+$('run').onclick=()=>running?stop():start();
+$('now').onclick=async()=>{if(!video&&!(await startCam()))return;if(!busy){lastEN='';translate()}};
+$('focusBtn').onclick=()=>{document.body.classList.toggle('focus');$('focusBtn').textContent=document.body.classList.contains('focus')?'إظهار الإعدادات':'وضع اللعب'};
+
+function drawHist(){$('hist').innerHTML=hist.map(h=>`<li><time>${new Date(h.t).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit'})}</time>${h.s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</li>`).join('')||'<li class="small">ما فيه شي للحين.</li>'}
+$('clear').onclick=()=>{hist=[];store.set('gta-hist',hist);spent=0;store.set('gta-spent',0);drawCost();drawHist()};
+drawHist();
+}
+</script>
+</body>
+</html>
