@@ -198,7 +198,7 @@ const diff=(a,b)=>{let s=0;for(let i=0;i<a.g.length;i++)s+=Math.abs(a.g[i]-b.g[i
 function tick(){
   if(!running||!video||!video.videoWidth){return}
   const cur=signature(),th=+$('sens').value;
-  const stable=prevSig&&diff(cur,prevSig)<th*.5;
+  const stable=prevSig&&diff(cur,prevSig)<th*.9;
   const changed=!lastSentSig||diff(cur,lastSentSig)>th;
   const hasText=cur.std>9;
   prevSig=cur;
@@ -206,15 +206,17 @@ function tick(){
   else if(!hasText)statusEl.textContent='ما فيه نص';
   else if(changed&&!stable)statusEl.textContent='ينتظر النص يثبت…';
   else statusEl.textContent='يراقب';
-  if(!busy&&hasText&&changed&&stable&&Date.now()-lastSentAt>1200){lastSentSig=cur;translate()}
+  if(hasText&&changed&&stable&&Date.now()-lastSentAt>500){
+    if(busy){ctrl?.abort();busy=false}   // a newer line appeared: drop the old request, chase the new one
+    lastSentSig=cur;translate()}
 }
 
 /* ---------- translation ---------- */
 function cropJpeg(){
-  const [sx,sy,sw,sh]=region(),s=Math.min(1280/Math.max(sw,sh),2);
+  const [sx,sy,sw,sh]=region(),s=Math.min(900/Math.max(sw,sh),1.6);
   const c=document.createElement('canvas');c.width=Math.round(sw*s);c.height=Math.round(sh*s);
   const g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
-  return c.toDataURL('image/jpeg',.85).split(',')[1];
+  return c.toDataURL('image/jpeg',.78).split(',')[1];
 }
 const STYLE={gulf:'Natural Saudi colloquial Arabic (عامية سعودية) — how a witty Saudi gamer would say it to a friend. Punchy, never cringe.',
  fusha:'Polished cinematic Modern Standard Arabic like a top-tier official Arabic dub: vivid, elegant, never stiff or literal.'};
@@ -227,10 +229,10 @@ Translate ALL readable English text into Arabic.
 Style: ${STYLE[$('style').value]}
 Rules: translate meaning, tone and attitude, never word-for-word; sarcasm stays sarcastic, threats menacing, jokes must land. Slang/idioms → natural Arabic equivalents. Strong swearing → strong but non-vulgar Arabic. Names/places/brands in common Arabic transliteration (لوسيا، جيسون، فايس سيتي). Dialogue with speaker names: «الاسم: الجملة», one per line. Mission objectives: short imperative. Ignore stray HUD numbers. Unreadable word → […].
 ${$('notes').checked?'After the Arabic, add a line "—" then up to 2 very short Arabic notes on slang/references, only if any.':''}
-Output format exactly:
-<en>the English text you read</en>
+Output format exactly (Arabic FIRST):
 <ar>the Arabic translation</ar>
-If there is no readable English text output exactly: <en></en><ar></ar>`;
+<en>the English text you read</en>
+If there is no readable English text output exactly: <ar></ar><en></en>`;
 }
 function between(s,a,b){const i=s.indexOf(a);if(i<0)return null;const j=s.indexOf(b,i+a.length);return s.slice(i+a.length,j<0?undefined:j).trim()}
 
@@ -243,7 +245,7 @@ async function translate(){
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model,max_tokens:700,stream:true,messages:[{role:'user',content:[
+      body:JSON.stringify({model,max_tokens:400,stream:true,messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}},{type:'text',text:prompt()}]}]})});
     if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message}catch(e){}
       throw new Error(r.status===401?'المفتاح غلط — غيّره من «آخر الترجمات».':r.status===429?'كثرت الطلبات، بيرجع يشتغل بعد شوي.':(r.status===400&&/credit/i.test(m))?'الرصيد خلص — اشحن من console.anthropic.com':m)}
@@ -254,9 +256,8 @@ async function translate(){
         if(ev.type==='message_start')inTok=ev.message?.usage?.input_tokens||0;
         else if(ev.type==='message_delta')outTok=ev.usage?.output_tokens||outTok;
         else if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){full+=ev.delta.text;
-          const ar=between(full,'<ar>','</ar>'),e=between(full,'<en>','</en>');
-          if(e!=null&&e.toLowerCase()===lastEN.toLowerCase()&&e){} // same line, keep current display
-          else if(ar){out.className='';out.textContent=ar;en.textContent=e||''}}}}
+          const ar=between(full,'<ar>','</ar>');
+          if(ar){out.className='';out.textContent=ar;en.textContent=between(full,'<en>','</en>')||''}}}}
     const p=PRICE[model];spent+=(inTok*p[0]+outTok*p[1])/1e6;store.set('gta-spent',spent);drawCost();
     const ar=between(full,'<ar>','</ar>')||'',e=between(full,'<en>','</en>')||'';
     if(!e||!ar){statusEl.textContent='ما فيه نص'}
@@ -274,7 +275,7 @@ async function start(){
   if(!key){showKey();return}
   if(!video&&!(await startCam()))return;
   running=true;keepAwake();$('run').textContent='إيقاف';$('run').classList.add('on');
-  clearInterval(loopT);loopT=setInterval(tick,450);
+  clearInterval(loopT);loopT=setInterval(tick,220);
 }
 function stop(){running=false;clearInterval(loopT);$('run').textContent='شغّل الترجمة الحية';$('run').classList.remove('on');statusEl.textContent='متوقف';try{wake?.release()}catch(e){}}
 $('run').onclick=()=>running?stop():start();
