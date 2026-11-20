@@ -198,41 +198,33 @@ const diff=(a,b)=>{let s=0;for(let i=0;i<a.g.length;i++)s+=Math.abs(a.g[i]-b.g[i
 function tick(){
   if(!running||!video||!video.videoWidth){return}
   const cur=signature(),th=+$('sens').value;
-  const stable=prevSig&&diff(cur,prevSig)<th*.9;
+  const stable=prevSig&&diff(cur,prevSig)<th*1.6;
   const changed=!lastSentSig||diff(cur,lastSentSig)>th;
   const hasText=cur.std>9;
   prevSig=cur;
   if(busy)statusEl.textContent='يترجم…';
   else if(!hasText)statusEl.textContent='ما فيه نص';
   else if(changed&&!stable)statusEl.textContent='ينتظر النص يثبت…';
-  else statusEl.textContent='يراقب';
-  if(hasText&&changed&&stable&&Date.now()-lastSentAt>500){
+  else if(!/أول كلمة/.test(statusEl.textContent))statusEl.textContent='يراقب';
+  if(hasText&&changed&&stable&&Date.now()-lastSentAt>300){
     if(busy){ctrl?.abort();busy=false}   // a newer line appeared: drop the old request, chase the new one
     lastSentSig=cur;translate()}
 }
 
 /* ---------- translation ---------- */
 function cropJpeg(){
-  const [sx,sy,sw,sh]=region(),s=Math.min(900/Math.max(sw,sh),1.6);
+  const [sx,sy,sw,sh]=region(),s=Math.min(720/Math.max(sw,sh),1.4);
   const c=document.createElement('canvas');c.width=Math.round(sw*s);c.height=Math.round(sh*s);
   const g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
-  return c.toDataURL('image/jpeg',.78).split(',')[1];
+  return c.toDataURL('image/jpeg',.72).split(',')[1];
 }
-const STYLE={gulf:'Natural Saudi colloquial Arabic (عامية سعودية) — how a witty Saudi gamer would say it to a friend. Punchy, never cringe.',
- fusha:'Polished cinematic Modern Standard Arabic like a top-tier official Arabic dub: vivid, elegant, never stiff or literal.'};
+const STYLE={gulf:'natural Saudi colloquial Arabic (عامية سعودية), punchy like a witty Saudi gamer.',
+ fusha:'polished cinematic Modern Standard Arabic like a top official dub.'};
 function prompt(){
-  return `You are an elite Arabic game localizer translating Grand Theft Auto VI (Leonida / Vice City; protagonists Lucia and Jason) live for an Arab player.
-The image is a phone-camera crop of a TV showing game text (subtitles, mission objectives, phone messages, menus). It may be blurry, angled, with glare or scanlines — read carefully, using game context to fix unclear letters.
-${ctx.length?`Recent lines for context (do not re-translate them): ${ctx.join(' | ')}`:''}
-
-Translate ALL readable English text into Arabic.
-Style: ${STYLE[$('style').value]}
-Rules: translate meaning, tone and attitude, never word-for-word; sarcasm stays sarcastic, threats menacing, jokes must land. Slang/idioms → natural Arabic equivalents. Strong swearing → strong but non-vulgar Arabic. Names/places/brands in common Arabic transliteration (لوسيا، جيسون، فايس سيتي). Dialogue with speaker names: «الاسم: الجملة», one per line. Mission objectives: short imperative. Ignore stray HUD numbers. Unreadable word → […].
-${$('notes').checked?'After the Arabic, add a line "—" then up to 2 very short Arabic notes on slang/references, only if any.':''}
-Output format exactly (Arabic FIRST):
-<ar>the Arabic translation</ar>
-<en>the English text you read</en>
-If there is no readable English text output exactly: <ar></ar><en></en>`;
+  return `GTA VI live subtitle translator (Leonida/Vice City, Lucia, Jason). Photo of a TV, may be blurry — read carefully.
+${ctx.length?`Previous lines: ${ctx.join(' | ')}\n`:''}Translate the English into ${STYLE[$('style').value]}
+Meaning and attitude, not literal; jokes, sarcasm and threats must land; swearing strong but not vulgar; names transliterated (لوسيا، جيسون). Speaker lines as «الاسم: الجملة». Ignore HUD numbers.${$('notes').checked?' After the Arabic add "—" and one very short note on slang if any.':''}
+Reply ONLY: <ar>Arabic</ar><en>English read</en>  — or <ar></ar><en></en> if no text.`;
 }
 function between(s,a,b){const i=s.indexOf(a);if(i<0)return null;const j=s.indexOf(b,i+a.length);return s.slice(i+a.length,j<0?undefined:j).trim()}
 
@@ -241,11 +233,11 @@ async function translate(){
   if(!video)return;
   busy=true;lastSentAt=Date.now();boxEl.classList.add('busy');
   const model=$('model').value,img=cropJpeg();
-  ctrl=new AbortController();let full='',inTok=0,outTok=0;
+  ctrl=new AbortController();let full='',inTok=0,outTok=0,first=0;const t0=performance.now();
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model,max_tokens:400,stream:true,messages:[{role:'user',content:[
+      body:JSON.stringify({model,max_tokens:300,temperature:0.3,stream:true,messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:'image/jpeg',data:img}},{type:'text',text:prompt()}]}]})});
     if(!r.ok){const t=await r.text();let m=t;try{m=JSON.parse(t).error.message}catch(e){}
       throw new Error(r.status===401?'المفتاح غلط — غيّره من «آخر الترجمات».':r.status===429?'كثرت الطلبات، بيرجع يشتغل بعد شوي.':(r.status===400&&/credit/i.test(m))?'الرصيد خلص — اشحن من console.anthropic.com':m)}
@@ -257,6 +249,7 @@ async function translate(){
         else if(ev.type==='message_delta')outTok=ev.usage?.output_tokens||outTok;
         else if(ev.type==='content_block_delta'&&ev.delta?.type==='text_delta'){full+=ev.delta.text;
           const ar=between(full,'<ar>','</ar>');
+          if(ar&&!first){first=performance.now()-t0;statusEl.textContent=`أول كلمة: ${(first/1000).toFixed(1)} ث`}
           if(ar){out.className='';out.textContent=ar;en.textContent=between(full,'<en>','</en>')||''}}}}
     const p=PRICE[model];spent+=(inTok*p[0]+outTok*p[1])/1e6;store.set('gta-spent',spent);drawCost();
     const ar=between(full,'<ar>','</ar>')||'',e=between(full,'<en>','</en>')||'';
@@ -275,7 +268,7 @@ async function start(){
   if(!key){showKey();return}
   if(!video&&!(await startCam()))return;
   running=true;keepAwake();$('run').textContent='إيقاف';$('run').classList.add('on');
-  clearInterval(loopT);loopT=setInterval(tick,220);
+  clearInterval(loopT);loopT=setInterval(tick,150);
 }
 function stop(){running=false;clearInterval(loopT);$('run').textContent='شغّل الترجمة الحية';$('run').classList.remove('on');statusEl.textContent='متوقف';try{wake?.release()}catch(e){}}
 $('run').onclick=()=>running?stop():start();
